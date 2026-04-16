@@ -11,6 +11,7 @@ import (
 type JobFilter struct {
 	Location string
 	Company  string
+	Query    string
 }
 
 // JobRepository defines the interface for job data operations
@@ -50,6 +51,14 @@ func (r *jobRepository) FindAll(offset, limit int, filter JobFilter) ([]models.J
 	var total int64
 
 	query := r.db.Model(&models.Job{})
+
+	if filter.Query != "" {
+		like := "%" + filter.Query + "%"
+		query = query.Where(
+			"(title ILIKE ? OR description ILIKE ? OR company ILIKE ? OR location ILIKE ?)",
+			like, like, like, like,
+		)
+	}
 
 	if filter.Location != "" {
 		query = query.Where("location ILIKE ?", "%"+filter.Location+"%")

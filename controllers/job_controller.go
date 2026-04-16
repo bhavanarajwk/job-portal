@@ -38,6 +38,38 @@ func (ctrl *JobController) GetAllJobs(c *gin.Context) {
 	filter := repository.JobFilter{
 		Location: c.Query("location"),
 		Company:  c.Query("company"),
+		Query:    c.Query("q"),
+	}
+
+	result, err := ctrl.jobService.GetAllJobs(pagination, filter)
+	if err != nil {
+		utils.InternalServerError(c, err.Error())
+		return
+	}
+
+	utils.Success(c, "jobs retrieved successfully", result)
+}
+
+// SearchJobs godoc
+// @Summary      Search jobs
+// @Description  Search jobs by keyword across title, description, company and location with optional filters
+// @Tags         Jobs
+// @Produce      json
+// @Security     BearerAuth
+// @Param        q          query     string  false  "Search keyword"
+// @Param        page       query     int     false  "Page number"       default(1)
+// @Param        page_size  query     int     false  "Items per page"    default(10)
+// @Param        location   query     string  false  "Filter by location"
+// @Param        company    query     string  false  "Filter by company"
+// @Success      200  {object}  utils.APIResponse
+// @Failure      401  {object}  utils.APIResponse
+// @Router       /jobs/search [get]
+func (ctrl *JobController) SearchJobs(c *gin.Context) {
+	pagination := utils.GetPagination(c)
+	filter := repository.JobFilter{
+		Location: c.Query("location"),
+		Company:  c.Query("company"),
+		Query:    c.Query("q"),
 	}
 
 	result, err := ctrl.jobService.GetAllJobs(pagination, filter)
