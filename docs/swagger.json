@@ -165,12 +165,15 @@
         "/jobs/{id}/apply": {
             "post": {
                 "security": [{ "BearerAuth": [] }],
-                "description": "Candidate submits an application for a job",
+                "description": "Candidate submits an application with optional cover letter and resume (PDF/DOCX, max 5MB)",
+                "consumes": ["multipart/form-data"],
                 "produces": ["application/json"],
                 "tags": ["Applications"],
                 "summary": "Apply for a job",
                 "parameters": [
-                    { "type": "string", "description": "Job UUID", "name": "id", "in": "path", "required": true }
+                    { "type": "string", "description": "Job UUID", "name": "id", "in": "path", "required": true },
+                    { "type": "string", "description": "Cover letter text", "name": "cover_letter", "in": "formData" },
+                    { "type": "file", "description": "Resume file (PDF or DOCX, max 5MB)", "name": "resume", "in": "formData" }
                 ],
                 "responses": {
                     "201": { "description": "Created", "schema": { "$ref": "#/definitions/APIResponse" } },

@@ -21,6 +21,9 @@ func Setup(
 	// ─── Swagger UI ───────────────────────────────────────────────────────────
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
+	// ─── Static file serving for uploaded resumes ─────────────────────────────
+	router.Static("/uploads", "./uploads")
+
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "job-portal"})

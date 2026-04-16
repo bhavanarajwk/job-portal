@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"log"
 
 	"job-portal/models"
 	"job-portal/repository"
@@ -37,13 +38,21 @@ type JobService interface {
 }
 
 type jobService struct {
-	jobRepo repository.JobRepository
+	jobRepo  repository.JobRepository
+	userRepo repository.UserRepository
+	appRepo  repository.ApplicationRepository
 }
 
 // NewJobService creates a new JobService instance
-func NewJobService(jobRepo repository.JobRepository) JobService {
-	return &jobService{jobRepo: jobRepo}
+func NewJobService(
+	jobRepo repository.JobRepository,
+	userRepo repository.UserRepository,
+	appRepo repository.ApplicationRepository,
+) JobService {
+	return &jobService{jobRepo: jobRepo, userRepo: userRepo, appRepo: appRepo}
 }
+
+// ── Create ────────────────────────────────────────────────────────────────────
 
 func (s *jobService) CreateJob(input CreateJobInput, recruiterID uuid.UUID) (*models.Job, error) {
 	job := &models.Job{
@@ -58,8 +67,33 @@ func (s *jobService) CreateJob(input CreateJobInput, recruiterID uuid.UUID) (*mo
 		return nil, errors.New("failed to create job")
 	}
 
+	// Notify all candidates asynchronously
+	go s.notifyAllCandidatesNewJob(job)
+
 	return job, nil
 }
+
+// notifyAllCandidatesNewJob emails every CANDIDATE about the new job posting
+func (s *jobService) notifyAllCandidatesNewJob(job *models.Job) {
+	candidates, err := s.userRepo.FindAllByRole(models.RoleCandidate)
+	if err != nil {
+		log.Printf("[EMAIL] Failed to fetch candidates for new job alert: %v", err)
+		return
+	}
+	if len(candidates) == 0 {
+		log.Println("[EMAIL] No candidates registered to notify")
+		return
+	}
+	log.Printf("[EMAIL] Notifying %d candidate(s) about new job: %s", len(candidates), job.Title)
+	for _, c := range candidates {
+		utils.SendEmailAsync(utils.NewJobAlertEmail(
+			c.Email, c.Name,
+			job.Title, job.Company, job.Location, job.Description,
+		))
+	}
+}
+
+// ── Read ──────────────────────────────────────────────────────────────────────
 
 func (s *jobService) GetJobByID(id uuid.UUID) (*models.Job, error) {
 	job, err := s.jobRepo.FindByID(id)
@@ -80,6 +114,8 @@ func (s *jobService) GetAllJobs(pagination utils.PaginationParams, filter reposi
 	return utils.BuildPaginatedResponse(jobs, total, pagination), nil
 }
 
+// ── Update ────────────────────────────────────────────────────────────────────
+
 func (s *jobService) UpdateJob(id uuid.UUID, input UpdateJobInput, recruiterID uuid.UUID) (*models.Job, error) {
 	job, err := s.jobRepo.FindByID(id)
 	if err != nil {
@@ -89,7 +125,6 @@ func (s *jobService) UpdateJob(id uuid.UUID, input UpdateJobInput, recruiterID u
 		return nil, errors.New("database error")
 	}
 
-	// Only the owning recruiter can update
 	if job.RecruiterID != recruiterID {
 		return nil, errors.New("forbidden: you do not own this job")
 	}
@@ -111,8 +146,40 @@ func (s *jobService) UpdateJob(id uuid.UUID, input UpdateJobInput, recruiterID u
 		return nil, errors.New("failed to update job")
 	}
 
+	// Notify candidates who applied for this job
+	go s.notifyApplicantsJobUpdated(job)
+
 	return job, nil
 }
+
+// notifyApplicantsJobUpdated emails candidates who have an active application for this job
+func (s *jobService) notifyApplicantsJobUpdated(job *models.Job) {
+	// Fetch all applications for this job (no pagination — get all)
+	apps, _, err := s.appRepo.FindByJobID(job.ID, 0, 10000)
+	if err != nil {
+		log.Printf("[EMAIL] Failed to fetch applicants for job update: %v", err)
+		return
+	}
+	if len(apps) == 0 {
+		log.Printf("[EMAIL] No applicants to notify for job update: %s", job.Title)
+		return
+	}
+
+	log.Printf("[EMAIL] Notifying %d applicant(s) about job update: %s", len(apps), job.Title)
+	for _, app := range apps {
+		candidate, err := s.userRepo.FindByID(app.UserID)
+		if err != nil {
+			log.Printf("[EMAIL] Could not find candidate %s: %v", app.UserID, err)
+			continue
+		}
+		utils.SendEmailAsync(utils.JobUpdatedEmail(
+			candidate.Email, candidate.Name,
+			job.Title, job.Company, job.Location, job.Description,
+		))
+	}
+}
+
+// ── Delete ────────────────────────────────────────────────────────────────────
 
 func (s *jobService) DeleteJob(id uuid.UUID, recruiterID uuid.UUID, role models.Role) error {
 	job, err := s.jobRepo.FindByID(id)
@@ -123,7 +190,6 @@ func (s *jobService) DeleteJob(id uuid.UUID, recruiterID uuid.UUID, role models.
 		return errors.New("database error")
 	}
 
-	// Admin can delete any job; recruiter can only delete their own
 	if role != models.RoleAdmin && job.RecruiterID != recruiterID {
 		return errors.New("forbidden: you do not own this job")
 	}

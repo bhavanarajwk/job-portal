@@ -11,16 +11,22 @@ import (
 
 // Config holds all application configuration
 type Config struct {
-	AppPort       string
-	AppEnv        string
-	DBHost        string
-	DBPort        string
-	DBUser        string
-	DBPassword    string
-	DBName        string
-	DBSSLMode     string
-	JWTSecret     string
+	AppPort        string
+	AppEnv         string
+	DBHost         string
+	DBPort         string
+	DBUser         string
+	DBPassword     string
+	DBName         string
+	DBSSLMode      string
+	JWTSecret      string
 	JWTExpiryHours int
+	// Email
+	SMTPHost     string
+	SMTPPort     string
+	SMTPUser     string
+	SMTPPassword string
+	SMTPFrom     string
 }
 
 var AppConfig *Config
@@ -47,6 +53,11 @@ func Load() *Config {
 		DBSSLMode:      getEnv("DB_SSLMODE", "disable"),
 		JWTSecret:      getEnvRequired("JWT_SECRET"),
 		JWTExpiryHours: expiryHours,
+		SMTPHost:       getEnv("SMTP_HOST", "smtp.gmail.com"),
+		SMTPPort:       getEnv("SMTP_PORT", "587"),
+		SMTPUser:       getEnv("SMTP_USER", ""),
+		SMTPPassword:   getEnv("SMTP_PASSWORD", ""),
+		SMTPFrom:       getEnv("SMTP_FROM", "Job Portal <noreply@jobportal.com>"),
 	}
 
 	return AppConfig
