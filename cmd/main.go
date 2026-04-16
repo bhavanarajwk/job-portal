@@ -65,6 +65,9 @@ func main() {
 	}
 
 	router := gin.New()
+	if err := router.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+		log.Fatalf("[FATAL] failed to set trusted proxies: %v", err)
+	}
 	router.Use(middleware.CORS())
 	router.Use(middleware.Logger())
 	router.Use(gin.Recovery())

@@ -109,6 +109,26 @@ const docTemplate = `{
                 }
             }
         },
+        "/jobs/search": {
+            "get": {
+                "security": [{ "BearerAuth": [] }],
+                "description": "Search jobs by keyword across title, description, company and location with optional filters",
+                "produces": ["application/json"],
+                "tags": ["Jobs"],
+                "summary": "Search jobs",
+                "parameters": [
+                    { "type": "string", "description": "Search keyword", "name": "q", "in": "query" },
+                    { "type": "integer", "default": 1, "description": "Page number", "name": "page", "in": "query" },
+                    { "type": "integer", "default": 10, "description": "Items per page", "name": "page_size", "in": "query" },
+                    { "type": "string", "description": "Filter by location", "name": "location", "in": "query" },
+                    { "type": "string", "description": "Filter by company", "name": "company", "in": "query" }
+                ],
+                "responses": {
+                    "200": { "description": "OK", "schema": { "$ref": "#/definitions/APIResponse" } },
+                    "401": { "description": "Unauthorized", "schema": { "$ref": "#/definitions/APIResponse" } }
+                }
+            }
+        },
         "/jobs/{id}": {
             "get": {
                 "security": [{ "BearerAuth": [] }],
@@ -300,6 +320,75 @@ const docTemplate = `{
                     "403": { "description": "Forbidden", "schema": { "$ref": "#/definitions/APIResponse" } }
                 }
             }
+        },
+        "/users/me": {
+            "get": {
+                "security": [{ "BearerAuth": [] }],
+                "description": "Returns profile details of the authenticated user",
+                "produces": ["application/json"],
+                "tags": ["Users"],
+                "summary": "Get current user profile",
+                "responses": {
+                    "200": { "description": "OK", "schema": { "$ref": "#/definitions/APIResponse" } },
+                    "401": { "description": "Unauthorized", "schema": { "$ref": "#/definitions/APIResponse" } },
+                    "404": { "description": "Not Found", "schema": { "$ref": "#/definitions/APIResponse" } }
+                }
+            },
+            "put": {
+                "security": [{ "BearerAuth": [] }],
+                "description": "Updates authenticated user's name, email and/or password",
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["Users"],
+                "summary": "Update current user profile",
+                "parameters": [
+                    { "description": "Update profile payload", "name": "body", "in": "body", "required": true, "schema": { "$ref": "#/definitions/UpdateMeInput" } }
+                ],
+                "responses": {
+                    "200": { "description": "OK", "schema": { "$ref": "#/definitions/APIResponse" } },
+                    "400": { "description": "Bad Request", "schema": { "$ref": "#/definitions/APIResponse" } },
+                    "401": { "description": "Unauthorized", "schema": { "$ref": "#/definitions/APIResponse" } },
+                    "404": { "description": "Not Found", "schema": { "$ref": "#/definitions/APIResponse" } },
+                    "409": { "description": "Conflict", "schema": { "$ref": "#/definitions/APIResponse" } }
+                }
+            },
+            "patch": {
+                "security": [{ "BearerAuth": [] }],
+                "description": "Edits profile page details for the authenticated user",
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["Users"],
+                "summary": "Edit profile page",
+                "parameters": [
+                    { "description": "Edit profile payload", "name": "body", "in": "body", "required": true, "schema": { "$ref": "#/definitions/UpdateMeInput" } }
+                ],
+                "responses": {
+                    "200": { "description": "OK", "schema": { "$ref": "#/definitions/APIResponse" } },
+                    "400": { "description": "Bad Request", "schema": { "$ref": "#/definitions/APIResponse" } },
+                    "401": { "description": "Unauthorized", "schema": { "$ref": "#/definitions/APIResponse" } },
+                    "404": { "description": "Not Found", "schema": { "$ref": "#/definitions/APIResponse" } },
+                    "409": { "description": "Conflict", "schema": { "$ref": "#/definitions/APIResponse" } }
+                }
+            }
+        },
+        "/users/me/password": {
+            "put": {
+                "security": [{ "BearerAuth": [] }],
+                "description": "Changes authenticated user's password by validating current password",
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["Users"],
+                "summary": "Change current user password",
+                "parameters": [
+                    { "description": "Change password payload", "name": "body", "in": "body", "required": true, "schema": { "$ref": "#/definitions/ChangePasswordInput" } }
+                ],
+                "responses": {
+                    "200": { "description": "OK", "schema": { "$ref": "#/definitions/APIResponse" } },
+                    "400": { "description": "Bad Request", "schema": { "$ref": "#/definitions/APIResponse" } },
+                    "401": { "description": "Unauthorized", "schema": { "$ref": "#/definitions/APIResponse" } },
+                    "404": { "description": "Not Found", "schema": { "$ref": "#/definitions/APIResponse" } }
+                }
+            }
         }
     },
     "definitions": {
@@ -354,6 +443,24 @@ const docTemplate = `{
             "required": ["status"],
             "properties": {
                 "status": { "type": "string", "enum": ["APPLIED", "REVIEWED", "REJECTED", "ACCEPTED"], "example": "ACCEPTED" }
+            }
+        },
+        "UpdateMeInput": {
+            "type": "object",
+            "properties": {
+                "name": { "type": "string", "example": "Alice Smith" },
+                "email": { "type": "string", "example": "alice@example.com" },
+                "password": { "type": "string", "example": "newsecret123" },
+                "new_password": { "type": "string", "example": "newsecret123" },
+                "newPassword": { "type": "string", "example": "newsecret123" }
+            }
+        },
+        "ChangePasswordInput": {
+            "type": "object",
+            "required": ["current_password", "new_password"],
+            "properties": {
+                "current_password": { "type": "string", "example": "oldsecret123" },
+                "new_password": { "type": "string", "example": "newsecret123" }
             }
         }
     },

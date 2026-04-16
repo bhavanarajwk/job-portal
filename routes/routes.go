@@ -47,6 +47,7 @@ func Setup(
 	{
 		// Candidate & Recruiter & Admin can view jobs
 		jobs.GET("", jobCtrl.GetAllJobs)
+		jobs.GET("/search", jobCtrl.SearchJobs)
 		jobs.GET("/:id", jobCtrl.GetJobByID)
 
 		// Candidate: apply for a job
@@ -88,6 +89,15 @@ func Setup(
 			middleware.RequireRole(models.RoleRecruiter),
 			appCtrl.UpdateApplicationStatus,
 		)
+	}
+
+	// ─── Current user profile ─────────────────────────────────────────────────
+	users := protected.Group("/users")
+	{
+		users.GET("/me", userCtrl.GetMe)
+		users.PUT("/me", userCtrl.UpdateMe)
+		users.PATCH("/me", userCtrl.UpdateMe)
+		users.PUT("/me/password", userCtrl.ChangePassword)
 	}
 
 	// ─── Admin ────────────────────────────────────────────────────────────────
