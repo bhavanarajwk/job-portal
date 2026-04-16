@@ -13,6 +13,7 @@ type UserRepository interface {
 	FindByEmail(email string) (*models.User, error)
 	FindByID(id uuid.UUID) (*models.User, error)
 	FindAll(offset, limit int) ([]models.User, int64, error)
+	FindAllByRole(role models.Role) ([]models.User, error)
 	Delete(id uuid.UUID) error
 }
 
@@ -54,6 +55,12 @@ func (r *userRepository) FindAll(offset, limit int) ([]models.User, int64, error
 	r.db.Model(&models.User{}).Count(&total)
 	err := r.db.Offset(offset).Limit(limit).Find(&users).Error
 	return users, total, err
+}
+
+func (r *userRepository) FindAllByRole(role models.Role) ([]models.User, error) {
+	var users []models.User
+	err := r.db.Where("role = ?", role).Find(&users).Error
+	return users, err
 }
 
 func (r *userRepository) Delete(id uuid.UUID) error {

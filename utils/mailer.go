@@ -18,82 +18,101 @@ type EmailMessage struct {
 	Body    string // HTML
 }
 
-// SendEmail sends an HTML email via SMTP.
-// It runs synchronously — call it inside a goroutine for non-blocking use.
+// SendEmail sends an HTML email via SMTP (synchronous).
+// Call via SendEmailAsync for non-blocking use.
 func SendEmail(msg EmailMessage) error {
+	// Snapshot config values at call time — safe for goroutines
 	cfg := config.AppConfig
+	if cfg == nil {
+		return fmt.Errorf("config not loaded")
+	}
 
-	if cfg.SMTPUser == "" || cfg.SMTPPassword == "" {
+	host     := cfg.SMTPHost
+	port     := cfg.SMTPPort
+	user     := cfg.SMTPUser
+	password := cfg.SMTPPassword
+	from     := cfg.SMTPFrom
+
+	if user == "" || password == "" {
 		log.Println("[WARN] SMTP credentials not configured, skipping email")
 		return nil
 	}
 
-	auth := smtp.PlainAuth("", cfg.SMTPUser, cfg.SMTPPassword, cfg.SMTPHost)
+	auth := smtp.PlainAuth("", user, password, host)
 
 	headers := fmt.Sprintf(
 		"From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n",
-		cfg.SMTPFrom,
+		from,
 		strings.Join(msg.To, ", "),
 		msg.Subject,
 	)
 
-	body := []byte(headers + msg.Body)
-	addr := net.JoinHostPort(cfg.SMTPHost, cfg.SMTPPort)
+	fullBody := []byte(headers + msg.Body)
+	addr := net.JoinHostPort(host, port)
 
-	// Use STARTTLS (port 587)
+	// Dial TCP
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("smtp dial error: %w", err)
 	}
 
-	client, err := smtp.NewClient(conn, cfg.SMTPHost)
+	client, err := smtp.NewClient(conn, host)
 	if err != nil {
 		return fmt.Errorf("smtp client error: %w", err)
 	}
 	defer client.Close()
 
-	tlsConfig := &tls.Config{ServerName: cfg.SMTPHost}
+	// Upgrade to TLS via STARTTLS
+	tlsConfig := &tls.Config{
+		ServerName:         host,
+		InsecureSkipVerify: false,
+	}
 	if err = client.StartTLS(tlsConfig); err != nil {
 		return fmt.Errorf("starttls error: %w", err)
 	}
 
+	// Authenticate
 	if err = client.Auth(auth); err != nil {
 		return fmt.Errorf("smtp auth error: %w", err)
 	}
 
-	if err = client.Mail(cfg.SMTPUser); err != nil {
-		return fmt.Errorf("smtp MAIL error: %w", err)
+	// Set sender
+	if err = client.Mail(user); err != nil {
+		return fmt.Errorf("smtp MAIL FROM error: %w", err)
 	}
 
+	// Set recipients
 	for _, to := range msg.To {
 		if err = client.Rcpt(to); err != nil {
-			return fmt.Errorf("smtp RCPT error for %s: %w", to, err)
+			return fmt.Errorf("smtp RCPT TO error for %s: %w", to, err)
 		}
 	}
 
+	// Write body
 	w, err := client.Data()
 	if err != nil {
 		return fmt.Errorf("smtp DATA error: %w", err)
 	}
-
-	if _, err = w.Write(body); err != nil {
+	if _, err = w.Write(fullBody); err != nil {
 		return fmt.Errorf("smtp write error: %w", err)
 	}
-
 	if err = w.Close(); err != nil {
-		return fmt.Errorf("smtp close error: %w", err)
+		return fmt.Errorf("smtp body close error: %w", err)
 	}
 
 	return client.Quit()
 }
 
-// SendEmailAsync fires SendEmail in a goroutine so it never blocks the API
+// SendEmailAsync fires SendEmail in a background goroutine.
+// Errors are logged but never returned — the API response is never blocked.
 func SendEmailAsync(msg EmailMessage) {
+	// Capture a copy of the message for the goroutine
+	m := msg
 	go func() {
-		if err := SendEmail(msg); err != nil {
-			log.Printf("[EMAIL ERROR] Failed to send to %v: %v", msg.To, err)
+		if err := SendEmail(m); err != nil {
+			log.Printf("[EMAIL ERROR] to=%v subject=%q err=%v", m.To, m.Subject, err)
 		} else {
-			log.Printf("[EMAIL] Sent '%s' to %v", msg.Subject, msg.To)
+			log.Printf("[EMAIL OK] to=%v subject=%q", m.To, m.Subject)
 		}
 	}()
 }

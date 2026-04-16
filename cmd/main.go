@@ -49,8 +49,8 @@ func main() {
 
 	// ── 4. Wire up services ───────────────────────────────────────────────────
 	authService := services.NewAuthService(userRepo)
-	jobService := services.NewJobService(jobRepo)
-	appService := services.NewApplicationService(appRepo, jobRepo)
+	jobService := services.NewJobService(jobRepo, userRepo, appRepo)
+	appService := services.NewApplicationService(appRepo, jobRepo, userRepo)
 	userService := services.NewUserService(userRepo)
 
 	// ── 5. Wire up controllers ────────────────────────────────────────────────

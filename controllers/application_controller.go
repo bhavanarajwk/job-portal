@@ -21,11 +21,14 @@ func NewApplicationController(appService services.ApplicationService) *Applicati
 
 // ApplyForJob godoc
 // @Summary      Apply for a job
-// @Description  Candidate submits an application for a job
+// @Description  Candidate submits an application with optional cover letter and resume (PDF/DOCX, max 5MB)
 // @Tags         Applications
+// @Accept       multipart/form-data
 // @Produce      json
 // @Security     BearerAuth
-// @Param        id   path      string  true  "Job UUID"
+// @Param        id            path      string  true   "Job UUID"
+// @Param        cover_letter  formData  string  false  "Cover letter text"
+// @Param        resume        formData  file    false  "Resume file (PDF or DOCX, max 5MB)"
 // @Success      201  {object}  utils.APIResponse
 // @Failure      400  {object}  utils.APIResponse
 // @Failure      404  {object}  utils.APIResponse
@@ -38,8 +41,30 @@ func (ctrl *ApplicationController) ApplyForJob(c *gin.Context) {
 		return
 	}
 
+	// Parse multipart form (max 10MB total)
+	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
+		utils.BadRequest(c, "failed to parse form data", err.Error())
+		return
+	}
+
+	input := services.ApplyInput{
+		CoverLetter: c.PostForm("cover_letter"),
+	}
+
+	// Handle optional resume upload
+	file, fileHeader, err := c.Request.FormFile("resume")
+	if err == nil && fileHeader != nil {
+		file.Close()
+		resumePath, err := utils.SaveResume(fileHeader)
+		if err != nil {
+			utils.BadRequest(c, err.Error(), nil)
+			return
+		}
+		input.ResumeURL = resumePath
+	}
+
 	candidateID := middleware.GetUserID(c)
-	app, err := ctrl.appService.Apply(candidateID, jobID)
+	app, err := ctrl.appService.Apply(candidateID, jobID, input)
 	if err != nil {
 		switch err.Error() {
 		case "job not found":

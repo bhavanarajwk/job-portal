@@ -2,6 +2,60 @@ package utils
 
 import "fmt"
 
+// JobUpdatedEmail builds the email sent to candidates who applied when a job is updated
+func JobUpdatedEmail(candidateEmail, candidateName, jobTitle, company, location, description string) EmailMessage {
+	body := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 30px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .header { background: #0284C7; padding: 30px; text-align: center; }
+    .header h1 { color: #fff; margin: 0; font-size: 22px; }
+    .body { padding: 30px; color: #333; line-height: 1.7; }
+    .badge { display: inline-block; background: #E0F2FE; color: #0369A1; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 14px; margin-bottom: 20px; }
+    .job-card { background: #F0F9FF; border-left: 4px solid #0284C7; padding: 16px 20px; border-radius: 4px; margin: 20px 0; }
+    .job-card h2 { margin: 0 0 8px; color: #1F2937; font-size: 18px; }
+    .job-card p { margin: 4px 0; color: #6B7280; font-size: 14px; }
+    .footer { background: #F3F4F6; padding: 16px 30px; text-align: center; font-size: 12px; color: #9CA3AF; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>✏️ Job Updated</h1>
+    </div>
+    <div class="body">
+      <p>Hi <strong>%s</strong>,</p>
+      <span class="badge">📢 Job Details Updated</span>
+      <p>A job you applied for has been updated by the recruiter. Here are the latest details:</p>
+      <div class="job-card">
+        <h2>%s</h2>
+        <p>🏢 <strong>%s</strong></p>
+        <p>📍 %s</p>
+        <p style="margin-top:12px; color:#374151;">%s</p>
+      </div>
+      <p>Your application is still active. No action needed from your side.</p>
+      <p>— The Job Portal Team</p>
+    </div>
+    <div class="footer">
+      &copy; 2026 Job Portal. All rights reserved.
+    </div>
+  </div>
+</body>
+</html>`,
+		candidateName, jobTitle, company, location, description,
+	)
+
+	return EmailMessage{
+		To:      []string{candidateEmail},
+		Subject: fmt.Sprintf("📢 Job Updated: %s at %s", jobTitle, company),
+		Body:    body,
+	}
+}
+
 // NewJobAlertEmail builds the email sent to candidates when a new job is posted
 func NewJobAlertEmail(candidateEmail, candidateName, jobTitle, company, location, description string) EmailMessage {
 	body := fmt.Sprintf(`

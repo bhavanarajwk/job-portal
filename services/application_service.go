@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"log"
 
 	"job-portal/models"
 	"job-portal/repository"
@@ -16,9 +17,15 @@ type UpdateStatusInput struct {
 	Status models.ApplicationStatus `json:"status" binding:"required,oneof=APPLIED REVIEWED REJECTED ACCEPTED"`
 }
 
+// ApplyInput holds data submitted when a candidate applies for a job
+type ApplyInput struct {
+	CoverLetter string // from multipart form field
+	ResumeURL   string // set after file is saved
+}
+
 // ApplicationService defines application business logic
 type ApplicationService interface {
-	Apply(candidateID, jobID uuid.UUID) (*models.Application, error)
+	Apply(candidateID, jobID uuid.UUID, input ApplyInput) (*models.Application, error)
 	GetMyApplications(candidateID uuid.UUID, pagination utils.PaginationParams) (utils.PaginatedResponse, error)
 	GetApplicationsByJob(jobID uuid.UUID, recruiterID uuid.UUID, pagination utils.PaginationParams) (utils.PaginatedResponse, error)
 	GetAllApplications(pagination utils.PaginationParams) (utils.PaginatedResponse, error)
@@ -26,18 +33,23 @@ type ApplicationService interface {
 }
 
 type applicationService struct {
-	appRepo repository.ApplicationRepository
-	jobRepo repository.JobRepository
+	appRepo  repository.ApplicationRepository
+	jobRepo  repository.JobRepository
+	userRepo repository.UserRepository
 }
 
 // NewApplicationService creates a new ApplicationService instance
-func NewApplicationService(appRepo repository.ApplicationRepository, jobRepo repository.JobRepository) ApplicationService {
-	return &applicationService{appRepo: appRepo, jobRepo: jobRepo}
+func NewApplicationService(
+	appRepo repository.ApplicationRepository,
+	jobRepo repository.JobRepository,
+	userRepo repository.UserRepository,
+) ApplicationService {
+	return &applicationService{appRepo: appRepo, jobRepo: jobRepo, userRepo: userRepo}
 }
 
-func (s *applicationService) Apply(candidateID, jobID uuid.UUID) (*models.Application, error) {
+func (s *applicationService) Apply(candidateID, jobID uuid.UUID, input ApplyInput) (*models.Application, error) {
 	// Verify job exists
-	_, err := s.jobRepo.FindByID(jobID)
+	job, err := s.jobRepo.FindByID(jobID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("job not found")
@@ -55,14 +67,49 @@ func (s *applicationService) Apply(candidateID, jobID uuid.UUID) (*models.Applic
 	}
 
 	app := &models.Application{
-		UserID: candidateID,
-		JobID:  jobID,
-		Status: models.StatusApplied,
+		UserID:      candidateID,
+		JobID:       jobID,
+		CoverLetter: input.CoverLetter,
+		ResumeURL:   input.ResumeURL,
+		Status:      models.StatusApplied,
 	}
 
 	if err := s.appRepo.Create(app); err != nil {
 		return nil, errors.New("failed to submit application")
 	}
+
+	// Snapshot values for goroutine
+	jobTitle    := job.Title
+	jobCompany  := job.Company
+	jobLocation := job.Location
+	recruiterID := job.RecruiterID
+	candID      := candidateID
+
+	go func() {
+		candidate, err := s.userRepo.FindByID(candID)
+		if err != nil {
+			log.Printf("[EMAIL] Could not find candidate %s: %v", candID, err)
+			return
+		}
+		recruiter, err := s.userRepo.FindByID(recruiterID)
+		if err != nil {
+			log.Printf("[EMAIL] Could not find recruiter %s: %v", recruiterID, err)
+			return
+		}
+
+		// Email 1 → Candidate: confirmation
+		utils.SendEmailAsync(utils.ApplicationConfirmationEmail(
+			candidate.Email, candidate.Name,
+			jobTitle, jobCompany, jobLocation,
+		))
+
+		// Email 2 → Recruiter: new application alert
+		utils.SendEmailAsync(utils.ApplicationReceivedEmail(
+			recruiter.Email, recruiter.Name,
+			candidate.Name, candidate.Email,
+			jobTitle,
+		))
+	}()
 
 	return app, nil
 }
@@ -76,7 +123,6 @@ func (s *applicationService) GetMyApplications(candidateID uuid.UUID, pagination
 }
 
 func (s *applicationService) GetApplicationsByJob(jobID uuid.UUID, recruiterID uuid.UUID, pagination utils.PaginationParams) (utils.PaginatedResponse, error) {
-	// Verify recruiter owns the job
 	job, err := s.jobRepo.FindByID(jobID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -113,7 +159,6 @@ func (s *applicationService) UpdateStatus(appID uuid.UUID, recruiterID uuid.UUID
 		return nil, errors.New("database error")
 	}
 
-	// Verify recruiter owns the job this application is for
 	job, err := s.jobRepo.FindByID(app.JobID)
 	if err != nil {
 		return nil, errors.New("associated job not found")
@@ -127,5 +172,29 @@ func (s *applicationService) UpdateStatus(appID uuid.UUID, recruiterID uuid.UUID
 	}
 
 	app.Status = input.Status
+
+	// Notify candidate on meaningful status changes
+	if input.Status == models.StatusAccepted ||
+		input.Status == models.StatusRejected ||
+		input.Status == models.StatusReviewed {
+
+		jobTitle   := job.Title
+		jobCompany := job.Company
+		status     := string(input.Status)
+		candID     := app.UserID
+
+		go func() {
+			candidate, err := s.userRepo.FindByID(candID)
+			if err != nil {
+				log.Printf("[EMAIL] Could not find candidate %s: %v", candID, err)
+				return
+			}
+			utils.SendEmailAsync(utils.ApplicationStatusEmail(
+				candidate.Email, candidate.Name,
+				jobTitle, jobCompany, status,
+			))
+		}()
+	}
+
 	return app, nil
 }
